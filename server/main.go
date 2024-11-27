@@ -40,7 +40,10 @@ type Exchange struct {
 
 func main() {
 	http.HandleFunc("/cotacao", SearchExchange)
-	http.ListenAndServe(":8080", nil)
+	err := http.ListenAndServe(":8080", nil)
+	if err != nil {
+		return
+	}
 }
 
 func SearchExchange(w http.ResponseWriter, r *http.Request) {
