@@ -1,19 +1,26 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
-	"io"
 	"log"
 	"net/http"
 	"os"
+	"strconv"
+	"time"
 )
 
 type ExchangeRate struct {
 	UsdBrl Exchange `json:"USDBRL"`
+}
+
+type BidResponse struct {
+	Bid float64 `json:"bid"`
 }
 
 type Exchange struct {
@@ -42,41 +49,72 @@ func SearchExchange(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+
+	bidValue, err := strconv.ParseFloat(exchange.Bid, 64)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, "Erro ao converter Bid para float64: %v", err)
+		return
+	}
+
+	response := BidResponse{
+		Bid: bidValue,
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(exchange)
+	json.NewEncoder(w).Encode(response)
+
 }
 
 func GetExchange() (*Exchange, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	}
 	client := &http.Client{Transport: tr}
-	request, err := client.Get("https://economia.awesomeapi.com.br/json/last/USD-BRL")
+
+	req, err := http.NewRequestWithContext(ctx, "GET", "https://economia.awesomeapi.com.br/json/last/USD-BRL", nil)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Erro ao realizar a requisição: %v\n", err)
-		return nil, err
+		panic(err)
 	}
-	defer request.Body.Close()
-	response, err := io.ReadAll(request.Body)
+	response, err := client.Do(req)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Erro ao ao ler a resposta: %v\n", err)
-		return nil, err
+		panic(err)
 	}
+	defer response.Body.Close()
+
 	var exchange ExchangeRate
-	err = json.Unmarshal(response, &exchange)
+	err = json.NewDecoder(response.Body).Decode(&exchange)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Erro ao parse da resposta: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Erro ao fazer o parse da resposta: %v\n", err)
 		return nil, err
 	}
+
+	SaveResult(&exchange)
+	return &exchange.UsdBrl, nil
+}
+
+func SaveResult(exchange *ExchangeRate) {
 	db, err := ConnectSqlite()
 	if err != nil {
 		log.Fatalf("failed to connect database: %v", err)
-		return nil, err
 	}
 	defer db.Session(&gorm.Session{AllowGlobalUpdate: true})
-	db.Create(&exchange.UsdBrl)
-	return &exchange.UsdBrl, nil
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+
+	result := db.WithContext(ctx).Create(&exchange.UsdBrl)
+	if result.Error != nil {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			fmt.Fprintf(os.Stderr, "Operação excedeu o tempo limite de 10ms\n")
+		} else {
+			fmt.Fprintf(os.Stderr, "Erro ao salvar no banco: %v\n", result.Error)
+		}
+	}
+
 }
 
 func ConnectSqlite() (*gorm.DB, error) {

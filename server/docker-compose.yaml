@@ -1,0 +1,19 @@
+version: '3'
+
+services:
+  server-app:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - .:/app
+      - ./data:/app/data
+    networks:
+      - server-network
+
+networks:
+  server-network:
+    external: true
+
+volumes:
+  data:
