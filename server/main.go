@@ -73,6 +73,12 @@ func SearchExchange(w http.ResponseWriter, r *http.Request) {
 func GetExchange() (*Exchange, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
+
+	select {
+	case <-ctx.Done():
+		log.Println("falha ao buscar a cotação")
+	}
+
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	}

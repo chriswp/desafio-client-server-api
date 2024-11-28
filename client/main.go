@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"time"
@@ -16,6 +17,11 @@ type Price struct {
 func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 400*time.Millisecond)
 	defer cancel()
+
+	select {
+	case <-ctx.Done():
+		log.Println("requisição não foi processada")
+	}
 
 	req, err := http.NewRequestWithContext(ctx, "GET", "http://localhost:8080/cotacao", nil)
 	if err != nil {
