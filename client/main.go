@@ -33,6 +33,13 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Erro ao fazer o parse da resposta: %v\n", err)
 
 	}
+
+	f, err := os.Create("cotacao.txt")
+	if err != nil {
+		panic(err)
+	}
+	_, err = f.WriteString(fmt.Sprintf("Dólar: %f", price.Bid))
+	defer f.Close()
 	fmt.Println("Price:", price.Bid)
 
 }
